@@ -1,0 +1,77 @@
+// watchdog_monitor.c
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/init.h>
+#include <linux/sched.h>
+#include <linux/slab.h>
+#include <linux/timer.h>
+#include <linux/seq_file.h>
+#include <linux/uaccess.h>
+#include <linux/proc_fs.h>
+#include <linux/string.h>
+#include <linux/sched/signal.h>
+#include <linux/cpu.h>
+#include <linux/mm.h> // Added for si_meminfo
+
+#define CPU_THRESHOLD 95
+#define MEMORY_THRESHOLD 95
+#define PROCFS_NAME "watchdog"
+
+static struct timer_list watchdog_timer;
+
+// Function to get memory usage
+static unsigned long get_memory_usage(void) {
+    struct sysinfo info;
+    si_meminfo(&info);
+    return (info.totalram - info.freeram) * 100 / info.totalram; // Memory usage in percentage
+}
+
+// Function to log usage and check thresholds
+void log_usage(struct timer_list *t) {
+    unsigned long memory_usage = get_memory_usage();
+
+    printk(KERN_INFO "Memory usage: %lu%%\n", memory_usage);
+
+    // Check memory threshold
+    if (memory_usage > MEMORY_THRESHOLD) {
+        printk(KERN_ALERT "Memory usage exceeds threshold! Current: %lu%%\n", memory_usage);
+        // Implement process management logic here if needed
+    }
+
+    // Reschedule the timer
+    mod_timer(&watchdog_timer, jiffies + msecs_to_jiffies(10000)); // Every 10 seconds
+}
+
+// Function to create a proc entry for user interaction
+static ssize_t proc_write(struct file *file, const char *buffer, size_t length, loff_t *offset) {
+    // Handle user input for process management if needed
+    return length;
+}
+
+static const struct file_operations proc_fops = {
+    .owner = THIS_MODULE,
+    .write = proc_write,
+};
+
+static int __init watchdog_monitor_init(void) {
+    printk(KERN_INFO "Watchdog Monitor Module Loaded\n");
+    timer_setup(&watchdog_timer, log_usage, 0);
+    mod_timer(&watchdog_timer, jiffies + msecs_to_jiffies(10000)); // Schedule the first log
+
+    // Create proc entry
+    proc_create(PROCFS_NAME, 0666, NULL, &proc_fops);
+    return 0;
+}
+
+static void __exit watchdog_monitor_exit(void) {
+    del_timer(&watchdog_timer);
+    remove_proc_entry(PROCFS_NAME, NULL);
+    printk(KERN_INFO "Watchdog Monitor Module Unloaded\n");
+}
+
+module_init(watchdog_monitor_init);
+module_exit(watchdog_monitor_exit);
+
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Your Name");
+MODULE_DESCRIPTION("A simple watchdog monitoring CPU and Memory usage");
